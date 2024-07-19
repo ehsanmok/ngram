@@ -6,7 +6,6 @@ import sys
 import os
 import math
 from sys.ffi import external_call
-from testing import assert_raises
 
 alias c_char = UInt8
 alias c_int = Int32
@@ -20,6 +19,7 @@ alias c_float = Float32
 alias NUM_TOKENS = 27
 alias EOF = -1
 alias EOT_TOKEN = 0
+
 
 fn powi(base: c_int, exp: c_int) -> c_size_t:
     var result = 1
@@ -110,7 +110,7 @@ struct NgramModel:
         self.smoothing = smoothing
         self.num_counts = powi(vocab_size, seq_len)
         self.counts = UnsafePointer[c_uint32_t].alloc(self.num_counts)
-        memset_zero[c_uint32_t](self.counts, 0)
+        memset_zero(self.counts, self.num_counts)
         self.ravel_buffer = UnsafePointer[c_int].alloc(int(self.seq_len))
 
     fn __del__(owned self):
@@ -126,8 +126,8 @@ struct NgramModel:
             self.num_counts,
         )
 
-    def train(inout self, tape: UnsafePointer[c_int]):
-        offset = ravel_index(tape, self.seq_len, self.vocab_size)
+    def train(inout self, buffer: UnsafePointer[c_int]):
+        offset = ravel_index(buffer, self.seq_len, self.vocab_size)
         debug_assert(
             offset >= 0 and offset < self.num_counts,
             String.format(
@@ -142,9 +142,10 @@ struct NgramModel:
         self, tape: UnsafePointer[c_int], probs: UnsafePointer[c_float]
     ):
         for i in range(self.seq_len - 1):
+            # tap is already initialized for inference so it's safe to index tape[i]
             self.ravel_buffer.offset(i).init_pointee_copy(tape[i])
 
-        self.ravel_buffer[int(self.seq_len) - 1] = 0
+        self.ravel_buffer.offset(int(self.seq_len) - 1).init_pointee_copy(0)
 
         offset = ravel_index(self.ravel_buffer, self.seq_len, self.vocab_size)
         counts_row = self.counts + offset
@@ -160,7 +161,9 @@ struct NgramModel:
         else:
             scale = c_float(1.0) / row_sum
             for i in range(self.vocab_size):
-                counts_i = (counts_row[i]).cast[DType.float32]() + self.smoothing
+                counts_i = (counts_row[i]).cast[
+                    DType.float32
+                ]() + self.smoothing
                 probs.offset(i).init_pointee_copy(scale * counts_i)
 
 
@@ -168,7 +171,7 @@ def ravel_index(index: UnsafePointer[c_int], n: c_int, dim: c_int) -> c_size_t:
     index1d = 0
     multiplier = 1
     for i in range(n - 1, 0, -1):
-        ix = index[i]
+        ix = index[i] # assumes index has been initialized
         debug_assert(
             ix >= 0 and ix < dim,
             String.format(
@@ -198,6 +201,7 @@ struct Tape:
         self.buffer = UnsafePointer[c_int]()
         if length > 0:
             self.buffer = UnsafePointer[c_int].alloc(int(length))
+            memset_zero(self.buffer, int(length)) # need to initialize to make sure ravel_index `index[i]` is valid
 
     fn __del__(owned self):
         if self.buffer:
@@ -211,10 +215,10 @@ struct Tape:
             self.buffer.offset(i).init_pointee_copy(val)
 
     def update(inout self, token: c_int) -> c_int:
-        """Satefy this assumes the buffer has been initialized."""
         if self.length == 0:
             return 1
 
+        # Satefy: this assumes the buffer has been initialized
         for i in range(self.length - 1):
             self.buffer[i] = self.buffer[i + 1]
 
@@ -276,12 +280,19 @@ struct FileHandle:
 
         return
 
-    @staticmethod
-    fn _fgetc(stream: UnsafePointer[FILE]) -> c_int:
-        return external_call["fgetc", c_int, UnsafePointer[FILE]](stream)
+    fn fgetc(inout self) raises -> c_int:
+        """Safe and idiomatic wrapper https://man7.org/linux/man-pages/man3/fgetc.3.html.
+        """
+        debug_assert(
+            self.handle != UnsafePointer[FILE](), "File must be opened first"
+        )
+        var ret = external_call["fgetc", c_int, UnsafePointer[FILE]](
+            self.handle
+        )
+        if not ret:  # null on error
+            raise Error("Error in fgetc")
 
-    fn fgetc(inout self) -> c_int:
-        return self._fgetc(self.handle)
+        return ret
 
 
 fn fopen(path: String, mode: String = "r") raises -> FileHandle:
@@ -334,7 +345,7 @@ def main():
     seq_len = c_int(4)
     smoothing = c_float(0.1)
     for i in range(1, argc, 2):
-        if i + 1 > argc:
+        if i + 1 >= argc:
             return error_usage()
         if args[i][0] != "-":
             return error_usage()
