@@ -27,6 +27,10 @@ alias NUM_TOKENS = 27
 alias EOF = -1
 alias EOT_TOKEN = 0
 
+alias NEWLINE = c_int(ord("\n"))
+alias AORD = c_int(ord("a"))
+alias ZORD = c_int(ord("z"))
+
 struct RNG:
     """Safe abstraction for random number generator."""
     var rng: UnsafePointer[c_uint64_t]
@@ -76,12 +80,11 @@ def sample_discrete(
 
 @always_inline("nodebug")
 def tokenizer_encode(c: c_int) -> c_int:
-    newline = c_int(ord("\n"))
-    # debug_assert(
-    #     c == newline or (c_int(ord("a")) <= c and c <= c_int(ord("z"))),
-    #     "characters a-z are encoded as 1-26, and '\n' is encoded as 0",
-    # )
-    return c_int(EOT_TOKEN) if c == newline else c_int(c) - c_int(ord("a")) + 1
+    debug_assert(
+        c == NEWLINE or AORD <= c and c <= ZORD,
+        "characters a-z are encoded as 1-26, and '\n' is encoded as 0",
+    )
+    return c_int(EOT_TOKEN) if c == NEWLINE else c_int(c) - AORD + 1
 
 @always_inline("nodebug")
 def tokenizer_decode(token: c_int) -> c_int:
@@ -94,8 +97,8 @@ def tokenizer_decode(token: c_int) -> c_int:
     #     ),
     # )
     return (
-        c_int(ord("\n")) if token
-        == c_int(EOT_TOKEN) else c_int(ord("a")) + c_int(token) - 1
+        NEWLINE if token
+        == c_int(EOT_TOKEN) else AORD + c_int(token) - 1
     )
 
 
@@ -111,11 +114,11 @@ struct NgramModel:
     fn __init__(
         inout self, vocab_size: c_int, seq_len: c_int, smoothing: c_float
     ) raises:
-        # debug_assert(vocab_size > 0, "vocab_size must be a positive integer.")
-        # debug_assert(
-        #     seq_len >= 1 and seq_len <= 6,
-        #     "seq_len must be an integer between (including) 1 to 6.",
-        # )
+        debug_assert(vocab_size > 0, "vocab_size must be a positive integer.")
+        debug_assert(
+            seq_len >= 1 and seq_len <= 6,
+            "seq_len must be an integer between (including) 1 to 6.",
+        )
         self.vocab_size = vocab_size
         self.seq_len = seq_len
         self.smoothing = smoothing
@@ -269,8 +272,7 @@ struct FileHandle:
             path.unsafe_cstr_ptr(), mode.unsafe_cstr_ptr()
         )
         if not handle:
-            #raise Error("Error opening file")
-            raise "Error opening file"
+            raise Error("Error opening file")
 
         self.handle = handle
 
@@ -282,17 +284,16 @@ struct FileHandle:
     def fclose(inout self):
         """Safe and idiomatic wrapper https://man7.org/linux/man-pages/man3/fclose.3.html.
         """
-        # debug_assert(
-        #     self.handle != UnsafePointer[FILE](), "File must be opened first"
-        # )
+        debug_assert(
+            self.handle != UnsafePointer[FILE](), "File must be opened first"
+        )
         var ret = external_call["fclose", c_int, UnsafePointer[FILE]](
             self.handle
         )
         # Important to set handle to NULL ptr to prevent having dangling pointer
         self.handle = UnsafePointer[FILE]()
         if ret:
-            #raise Error("Error in closing the file")
-            raise "Error in closing the file"
+            raise Error("Error in closing the file")
 
         return
 
@@ -300,15 +301,14 @@ struct FileHandle:
     def fgetc(inout self) -> c_int:
         """Safe and idiomatic wrapper https://man7.org/linux/man-pages/man3/fgetc.3.html.
         """
-        # debug_assert(
-        #     self.handle != UnsafePointer[FILE](), "File must be opened first"
-        # )
+        debug_assert(
+            self.handle != UnsafePointer[FILE](), "File must be opened first"
+        )
         var ret = external_call["fgetc", c_int, UnsafePointer[FILE]](
             self.handle
         )
         if not ret:  # null on error
-            #raise Error("Error in fgetc")
-            raise "Error in fgetc"
+            raise Error("Error in fgetc")
 
         return ret
 
@@ -334,7 +334,7 @@ struct DataLoader:
             _ = self.tape^
 
         except:
-            return
+            sys.exit(1)
 
     @always_inline("nodebug")
     def next(inout self) -> c_int:
@@ -352,10 +352,10 @@ struct DataLoader:
 
 @always_inline("nodebug")
 fn error_usage():
-    # print("Usage: ./ngram [options]", end="\n")
-    # print("Options:", end="\n")
-    # print(" -n <int> n-gram model arity (default 5)", end="\n")
-    # print(" -s <float> smoothing factor (default 0.1)", end="\n")
+    print("Usage: ./ngram [options]", end="\n")
+    print("Options:", end="\n")
+    print(" -n <int> n-gram model arity (default 5)", end="\n")
+    print(" -s <float> smoothing factor (default 0.1)", end="\n")
     sys.exit(1)
 
 
@@ -395,9 +395,9 @@ def main():
         token = sample_discrete(probs, NUM_TOKENS, coinf)
         _ = sample_tape.update(token)
         c = tokenizer_decode(token)
-        #print(chr(int(c)), end="")
+        print(chr(int(c)), end="")
 
-    #print("\n")
+    print("\n")
 
     # evaluate the test split loss
     test_loader = DataLoader("data/test.txt", seq_len)
@@ -415,9 +415,9 @@ def main():
 
     mean_loss = sum_loss / count
     test_preplexity = math.exp(mean_loss)
-    # print(
-    #     String.format(
-    #         "test_loss {}, test_preplexity {}", mean_loss, test_preplexity
-    #     )
-    # )
+    print(
+        String.format(
+            "test_loss {}, test_preplexity {}", mean_loss, test_preplexity
+        )
+    )
     return
