@@ -9,7 +9,9 @@ OR
 
 import sys
 from sys.ffi import external_call
-from utils import InlineArray
+from memory import memset_zero
+from collections import InlineArray
+from utils import Span
 
 alias c_char = UInt8
 alias c_int = Int32

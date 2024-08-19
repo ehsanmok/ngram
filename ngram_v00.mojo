@@ -10,6 +10,7 @@ How many issues can you spot before moving to the next version ngram_v01.mojo?
 
 import sys
 from sys.ffi import external_call
+from memory import memset_zero
 
 alias c_char = UInt8
 alias c_int = Int32
