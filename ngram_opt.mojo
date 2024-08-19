@@ -55,19 +55,19 @@ struct RNG:
 def sample_discrete(
     probs: InlineArray[c_float, NUM_TOKENS], n: c_int, coinf: c_float
 ) -> c_int:
-    debug_assert(
-        coinf >= 0.0 and coinf < 1.0,
-        String.format("coinf must be between 0 and 1 but given {}", coinf),
-    )
+    # debug_assert(
+    #     coinf >= 0.0 and coinf < 1.0,
+    #     String.format("coinf must be between 0 and 1 but given {}", coinf),
+    # )
     cdf = c_float(0.0)
     for i in range(n):
         probs_i = probs[i]
-        debug_assert(
-            probs_i >= 0.0 and probs_i <= 1.0,
-            String.format(
-                "probs_i must be between 0 and 1 but given {}", probs_i
-            ),
-        )
+        # debug_assert(
+        #     probs_i >= 0.0 and probs_i <= 1.0,
+        #     String.format(
+        #         "probs_i must be between 0 and 1 but given {}", probs_i
+        #     ),
+        # )
         cdf += probs_i
         if coinf < cdf:
             return i
@@ -77,22 +77,22 @@ def sample_discrete(
 @always_inline("nodebug")
 def tokenizer_encode(c: c_int) -> c_int:
     newline = c_int(ord("\n"))
-    debug_assert(
-        c == newline or (c_int(ord("a")) <= c and c <= c_int(ord("z"))),
-        "characters a-z are encoded as 1-26, and '\n' is encoded as 0",
-    )
+    # debug_assert(
+    #     c == newline or (c_int(ord("a")) <= c and c <= c_int(ord("z"))),
+    #     "characters a-z are encoded as 1-26, and '\n' is encoded as 0",
+    # )
     return c_int(EOT_TOKEN) if c == newline else c_int(c) - c_int(ord("a")) + 1
 
 @always_inline("nodebug")
 def tokenizer_decode(token: c_int) -> c_int:
-    debug_assert(
-        token >= 0 and token <= NUM_TOKENS,
-        String.format(
-            "token must be between 0 to NUM_TOKENS={} but given {}",
-            NUM_TOKENS,
-            token,
-        ),
-    )
+    # debug_assert(
+    #     token >= 0 and token <= NUM_TOKENS,
+    #     String.format(
+    #         "token must be between 0 to NUM_TOKENS={} but given {}",
+    #         NUM_TOKENS,
+    #         token,
+    #     ),
+    # )
     return (
         c_int(ord("\n")) if token
         == c_int(EOT_TOKEN) else c_int(ord("a")) + c_int(token) - 1
@@ -111,11 +111,11 @@ struct NgramModel:
     fn __init__(
         inout self, vocab_size: c_int, seq_len: c_int, smoothing: c_float
     ) raises:
-        debug_assert(vocab_size > 0, "vocab_size must be a positive integer.")
-        debug_assert(
-            seq_len >= 1 and seq_len <= 6,
-            "seq_len must be an integer between (including) 1 to 6.",
-        )
+        # debug_assert(vocab_size > 0, "vocab_size must be a positive integer.")
+        # debug_assert(
+        #     seq_len >= 1 and seq_len <= 6,
+        #     "seq_len must be an integer between (including) 1 to 6.",
+        # )
         self.vocab_size = vocab_size
         self.seq_len = seq_len
         self.smoothing = smoothing
@@ -136,12 +136,12 @@ struct NgramModel:
         var multiplier = 1
         for i in range(n - 1, 0, -1):
             var ix = index[i] # ???assumes index has been initialized
-            debug_assert(
-                ix >= 0 and ix < dim,
-                String.format(
-                    "ix must be between 0 and dim={} but given {}", dim, ix
-                ),
-            )
+            # debug_assert(
+            #     ix >= 0 and ix < dim,
+            #     String.format(
+            #         "ix must be between 0 and dim={} but given {}", dim, ix
+            #     ),
+            # )
             index1d += multiplier * int(ix)
             multiplier *= int(dim)
 
@@ -150,14 +150,14 @@ struct NgramModel:
     @always_inline("nodebug")
     def train(inout self, tape: Span[c_int, _]):
         offset = self._ravel_index(tape.unsafe_ptr(), self.seq_len, self.vocab_size)
-        debug_assert(
-            offset >= 0 and offset < self.num_counts,
-            String.format(
-                "offset must be between 0 to num_counts={} but give {}",
-                self.num_counts,
-                offset,
-            ),
-        )
+        # debug_assert(
+        #     offset >= 0 and offset < self.num_counts,
+        #     String.format(
+        #         "offset must be between 0 to num_counts={} but give {}",
+        #         self.num_counts,
+        #         offset,
+        #     ),
+        # )
         self.counts[offset] += 1
 
     @always_inline("nodebug")
@@ -208,12 +208,12 @@ struct Tape:
 
     @always_inline("nodebug")
     fn __init__(inout self, length: c_int) raises:
-        debug_assert(
-            length >= 0,
-            String.format(
-                "length must a non-negative integer but given {}", length
-            ),
-        )
+        # debug_assert(
+        #     length >= 0,
+        #     String.format(
+        #         "length must a non-negative integer but given {}", length
+        #     ),
+        # )
         self.length = length
         self.n = 0
         self.buffer = UnsafePointer[c_int]()
@@ -269,7 +269,8 @@ struct FileHandle:
             path.unsafe_cstr_ptr(), mode.unsafe_cstr_ptr()
         )
         if not handle:
-            raise Error("Error opening file")
+            #raise Error("Error opening file")
+            raise "Error opening file"
 
         self.handle = handle
 
@@ -281,16 +282,17 @@ struct FileHandle:
     def fclose(inout self):
         """Safe and idiomatic wrapper https://man7.org/linux/man-pages/man3/fclose.3.html.
         """
-        debug_assert(
-            self.handle != UnsafePointer[FILE](), "File must be opened first"
-        )
+        # debug_assert(
+        #     self.handle != UnsafePointer[FILE](), "File must be opened first"
+        # )
         var ret = external_call["fclose", c_int, UnsafePointer[FILE]](
             self.handle
         )
         # Important to set handle to NULL ptr to prevent having dangling pointer
         self.handle = UnsafePointer[FILE]()
         if ret:
-            raise Error("Error in closing the file")
+            #raise Error("Error in closing the file")
+            raise "Error in closing the file"
 
         return
 
@@ -298,14 +300,15 @@ struct FileHandle:
     def fgetc(inout self) -> c_int:
         """Safe and idiomatic wrapper https://man7.org/linux/man-pages/man3/fgetc.3.html.
         """
-        debug_assert(
-            self.handle != UnsafePointer[FILE](), "File must be opened first"
-        )
+        # debug_assert(
+        #     self.handle != UnsafePointer[FILE](), "File must be opened first"
+        # )
         var ret = external_call["fgetc", c_int, UnsafePointer[FILE]](
             self.handle
         )
         if not ret:  # null on error
-            raise Error("Error in fgetc")
+            #raise Error("Error in fgetc")
+            raise "Error in fgetc"
 
         return ret
 
@@ -349,10 +352,10 @@ struct DataLoader:
 
 @always_inline("nodebug")
 fn error_usage():
-    print("Usage: ./ngram [options]", end="\n")
-    print("Options:", end="\n")
-    print(" -n <int> n-gram model arity (default 5)", end="\n")
-    print(" -s <float> smoothing factor (default 0.1)", end="\n")
+    # print("Usage: ./ngram [options]", end="\n")
+    # print("Options:", end="\n")
+    # print(" -n <int> n-gram model arity (default 5)", end="\n")
+    # print(" -s <float> smoothing factor (default 0.1)", end="\n")
     sys.exit(1)
 
 
@@ -392,9 +395,9 @@ def main():
         token = sample_discrete(probs, NUM_TOKENS, coinf)
         _ = sample_tape.update(token)
         c = tokenizer_decode(token)
-        print(chr(int(c)), end="")
+        #print(chr(int(c)), end="")
 
-    print("\n")
+    #print("\n")
 
     # evaluate the test split loss
     test_loader = DataLoader("data/test.txt", seq_len)
@@ -412,9 +415,9 @@ def main():
 
     mean_loss = sum_loss / count
     test_preplexity = math.exp(mean_loss)
-    print(
-        String.format(
-            "test_loss {}, test_preplexity {}", mean_loss, test_preplexity
-        )
-    )
+    # print(
+    #     String.format(
+    #         "test_loss {}, test_preplexity {}", mean_loss, test_preplexity
+    #     )
+    # )
     return
