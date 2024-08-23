@@ -56,16 +56,16 @@ struct RNG:
         return (self.random_u32() >> 8).cast[DType.float32]() / c_float(16777216.0)
 
 @always_inline("nodebug")
-def sample_discrete(
+fn sample_discrete(
     probs: InlineArray[c_float, NUM_TOKENS], n: c_int, coinf: c_float
 ) -> c_int:
     # debug_assert(
     #     coinf >= 0.0 and coinf < 1.0,
     #     String.format("coinf must be between 0 and 1 but given {}", coinf),
     # )
-    cdf = c_float(0.0)
+    var cdf = c_float(0.0)
     for i in range(n):
-        probs_i = probs[i]
+        var probs_i = probs[i]
         # debug_assert(
         #     probs_i >= 0.0 and probs_i <= 1.0,
         #     String.format(
@@ -79,15 +79,15 @@ def sample_discrete(
     return n - 1
 
 @always_inline("nodebug")
-def tokenizer_encode(c: c_int) -> c_int:
-    debug_assert(
-        c == NEWLINE or AORD <= c and c <= ZORD,
-        "characters a-z are encoded as 1-26, and '\n' is encoded as 0",
-    )
+fn tokenizer_encode(c: c_int) -> c_int:
+    # debug_assert(
+    #     c == NEWLINE or AORD <= c and c <= ZORD,
+    #     "characters a-z are encoded as 1-26, and '\n' is encoded as 0",
+    # )
     return c_int(EOT_TOKEN) if c == NEWLINE else c_int(c) - AORD + 1
 
 @always_inline("nodebug")
-def tokenizer_decode(token: c_int) -> c_int:
+fn tokenizer_decode(token: c_int) -> c_int:
     # debug_assert(
     #     token >= 0 and token <= NUM_TOKENS,
     #     String.format(
@@ -101,7 +101,7 @@ def tokenizer_decode(token: c_int) -> c_int:
         == c_int(EOT_TOKEN) else AORD + c_int(token) - 1
     )
 
-
+@register_passable
 struct NgramModel:
     var seq_len: c_int
     var vocab_size: c_int
@@ -113,12 +113,12 @@ struct NgramModel:
     @always_inline("nodebug")
     fn __init__(
         inout self, vocab_size: c_int, seq_len: c_int, smoothing: c_float
-    ) raises:
-        debug_assert(vocab_size > 0, "vocab_size must be a positive integer.")
-        debug_assert(
-            seq_len >= 1 and seq_len <= 6,
-            "seq_len must be an integer between (including) 1 to 6.",
-        )
+    ):
+        # debug_assert(vocab_size > 0, "vocab_size must be a positive integer.")
+        # debug_assert(
+        #     seq_len >= 1 and seq_len <= 6,
+        #     "seq_len must be an integer between (including) 1 to 6.",
+        # )
         self.vocab_size = vocab_size
         self.seq_len = seq_len
         self.smoothing = smoothing
@@ -134,7 +134,7 @@ struct NgramModel:
 
     @always_inline("nodebug")
     @staticmethod
-    fn _ravel_index(index: UnsafePointer[c_int], n: c_int, dim: c_int) raises -> c_size_t:
+    fn _ravel_index(index: UnsafePointer[c_int], n: c_int, dim: c_int) -> c_size_t:
         var index1d = 0
         var multiplier = 1
         for i in range(n - 1, 0, -1):
@@ -151,8 +151,8 @@ struct NgramModel:
         return index1d
 
     @always_inline("nodebug")
-    def train(inout self, tape: Span[c_int, _]):
-        offset = self._ravel_index(tape.unsafe_ptr(), self.seq_len, self.vocab_size)
+    fn train(inout self, tape: Span[c_int, _]):
+        var offset = self._ravel_index(tape.unsafe_ptr(), self.seq_len, self.vocab_size)
         # debug_assert(
         #     offset >= 0 and offset < self.num_counts,
         #     String.format(
@@ -164,7 +164,7 @@ struct NgramModel:
         self.counts[offset] += 1
 
     @always_inline("nodebug")
-    def inference(
+    fn inference(
         self, tape: Span[c_int, _], probs: InlineArray[c_float, NUM_TOKENS]
     ):
         """
@@ -178,39 +178,39 @@ struct NgramModel:
 
         self.ravel_buffer.offset(int(self.seq_len) - 1).init_pointee_copy(0)
         # find the offset into the counts array based on the context
-        offset = self._ravel_index(
+        var offset = self._ravel_index(
             self.ravel_buffer, self.seq_len, self.vocab_size
         )
         # seek to the row of counts for this context
-        counts_row = self.counts.offset(offset)
+        var counts_row = self.counts.offset(offset)
 
         # calculate the sum of counts in the row
-        row_sum = (self.vocab_size).cast[DType.float32]() * self.smoothing
+        var row_sum = (self.vocab_size).cast[DType.float32]() * self.smoothing
         for i in range(self.vocab_size):
             row_sum += (counts_row[i]).cast[DType.float32]()
 
         if row_sum == c_float(0.0):
             # the entire row of counts is zero, so let's set uniform probabilities
-            uniform_prob = 1.0 / (self.vocab_size).cast[DType.float32]()
+            var uniform_prob = 1.0 / (self.vocab_size).cast[DType.float32]()
             for i in range(self.vocab_size):
                 probs.unsafe_ptr().offset(i).init_pointee_copy(uniform_prob)
         else:
             # normalize the row of counts into probabilities
-            scale = c_float(1.0) / row_sum
+            var scale = c_float(1.0) / row_sum
             for i in range(self.vocab_size):
-                counts_i = (counts_row[i]).cast[
+                var counts_i = (counts_row[i]).cast[
                     DType.float32
                 ]() + self.smoothing
                 probs.unsafe_ptr().offset(i).init_pointee_copy(scale * counts_i)
 
-
+@register_passable
 struct Tape:
     var n: c_int
     var length: c_int
     var buffer: UnsafePointer[c_int]
 
     @always_inline("nodebug")
-    fn __init__(inout self, length: c_int) raises:
+    fn __init__(inout self, length: c_int):
         # debug_assert(
         #     length >= 0,
         #     String.format(
@@ -234,9 +234,10 @@ struct Tape:
         return Span[c_int, __lifetime_of(self)](unsafe_ptr=self.buffer, len=int(self.length))
 
     @always_inline("nodebug")
-    def set(inout self, val: c_int):
+    fn set(inout self, val: c_int):
         if not self.buffer:
-            raise "length must be set to non-zero"
+            #raise "length must be set to non-zero"
+            sys.exit(1)
 
         for i in range(self.length):
             self.buffer.offset(i).init_pointee_copy(val)
@@ -266,13 +267,13 @@ struct FileHandle:
     var handle: UnsafePointer[FILE]
 
     @always_inline("nodebug")
-    fn __init__(inout self, path: String, mode: String) raises:
+    fn __init__(inout self, path: StringLiteral, mode: StringLiteral):
         # https://man7.org/linux/man-pages/man3/fopen.3.html
         var handle = external_call["fopen", UnsafePointer[FILE]](
             path.unsafe_cstr_ptr(), mode.unsafe_cstr_ptr()
         )
         if not handle:
-            raise Error("Error opening file")
+            sys.exit(1)
 
         self.handle = handle
 
@@ -281,39 +282,41 @@ struct FileHandle:
         self.handle = existing.handle
 
     @always_inline("nodebug")
-    def fclose(inout self):
+    fn fclose(inout self):
         """Safe and idiomatic wrapper https://man7.org/linux/man-pages/man3/fclose.3.html.
         """
-        debug_assert(
-            self.handle != UnsafePointer[FILE](), "File must be opened first"
-        )
+        # debug_assert(
+        #     self.handle != UnsafePointer[FILE](), "File must be opened first"
+        # )
         var ret = external_call["fclose", c_int, UnsafePointer[FILE]](
             self.handle
         )
         # Important to set handle to NULL ptr to prevent having dangling pointer
         self.handle = UnsafePointer[FILE]()
         if ret:
-            raise Error("Error in closing the file")
+            #raise Error("Error in closing the file")
+            sys.exit(1)
 
         return
 
     @always_inline("nodebug")
-    def fgetc(inout self) -> c_int:
+    fn fgetc(inout self) -> c_int:
         """Safe and idiomatic wrapper https://man7.org/linux/man-pages/man3/fgetc.3.html.
         """
-        debug_assert(
-            self.handle != UnsafePointer[FILE](), "File must be opened first"
-        )
+        # debug_assert(
+        #     self.handle != UnsafePointer[FILE](), "File must be opened first"
+        # )
         var ret = external_call["fgetc", c_int, UnsafePointer[FILE]](
             self.handle
         )
         if not ret:  # null on error
-            raise Error("Error in fgetc")
+            #raise Error("Error in fgetc")
+            sys.exit(1)
 
         return ret
 
 @always_inline("nodebug")
-def fopen(path: String, mode: String = "r") -> FileHandle:
+def fopen(path: StringLiteral, mode: StringLiteral = "r")-> FileHandle:
     return FileHandle(path, mode)
 
 struct DataLoader:
@@ -322,29 +325,31 @@ struct DataLoader:
     var tape: Tape
 
     @always_inline("nodebug")
-    fn __init__(inout self, path: String, seq_len: c_int) raises:
+    fn __init__(inout self, path: StringLiteral, seq_len: c_int) raises:
         self.file = fopen(path, mode="r")
         self.seq_len = seq_len
         self.tape = Tape(self.seq_len)
 
     @always_inline("nodebug")
     fn __del__(owned self):
-        try:
-            self.file.fclose()
-            _ = self.tape^
+        # try:
+        #     self.file.fclose()
+        #     _ = self.tape^
 
-        except:
-            sys.exit(1)
+        # except:
+        #     sys.exit(1)
+        self.file.fclose()
+        _ = self.tape^
 
     @always_inline("nodebug")
-    def next(inout self) -> c_int:
+    fn next(inout self) -> c_int:
         while True:
-            c = self.file.fgetc()
+            var c = self.file.fgetc()
             if c == EOF:
                 break
 
-            token = tokenizer_encode(c)
-            ready = self.tape.update(token)
+            var token = tokenizer_encode(c)
+            var ready = self.tape.update(token)
             if ready:
                 return 1
 
@@ -352,18 +357,18 @@ struct DataLoader:
 
 @always_inline("nodebug")
 fn error_usage():
-    print("Usage: ./ngram [options]", end="\n")
-    print("Options:", end="\n")
-    print(" -n <int> n-gram model arity (default 5)", end="\n")
-    print(" -s <float> smoothing factor (default 0.1)", end="\n")
+    # print("Usage: ./ngram [options]", end="\n")
+    # print("Options:", end="\n")
+    # print(" -n <int> n-gram model arity (default 5)", end="\n")
+    # print(" -s <float> smoothing factor (default 0.1)", end="\n")
     sys.exit(1)
 
 
-def main():
-    args = sys.argv()
-    argc = len(args)
-    seq_len = c_int(5)
-    smoothing = c_float(0.1)
+fn main() raises:
+    var args = sys.argv()
+    var argc = len(args)
+    var seq_len = c_int(5)
+    var smoothing = c_float(0.1)
     for i in range(1, argc, 2):
         if i + 1 >= argc:
             return error_usage()
@@ -379,45 +384,45 @@ def main():
             return error_usage()
 
     # train the model
-    model = NgramModel(NUM_TOKENS, seq_len, smoothing)
-    train_loader = DataLoader("data/train.txt", seq_len)
+    var model = NgramModel(NUM_TOKENS, seq_len, smoothing)
+    var train_loader = DataLoader("data/train.txt", seq_len)
     while train_loader.next():
         model.train(train_loader.tape.span())
 
     # allocate probs buffer for inference
-    probs = InlineArray[c_float, NUM_TOKENS](0)
-    sample_tape = Tape(seq_len - 1)
+    var probs = InlineArray[c_float, NUM_TOKENS](0)
+    var sample_tape = Tape(seq_len - 1)
     sample_tape.set(EOT_TOKEN) # fill with EOT tokens to init
-    rng = RNG(1337)
+    var rng = RNG(1337)
     for _ in range(200):
         model.inference(sample_tape.span(), probs)
-        coinf = rng.random_f32()
-        token = sample_discrete(probs, NUM_TOKENS, coinf)
+        var coinf = rng.random_f32()
+        var token = sample_discrete(probs, NUM_TOKENS, coinf)
         _ = sample_tape.update(token)
-        c = tokenizer_decode(token)
-        print(chr(int(c)), end="")
+        var c = tokenizer_decode(token)
+        #print(chr(int(c)), end="")
 
-    print("\n")
+    #print("\n")
 
     # evaluate the test split loss
-    test_loader = DataLoader("data/test.txt", seq_len)
-    sum_loss = c_float(0)
-    count = 0
+    var test_loader = DataLoader("data/test.txt", seq_len)
+    var sum_loss = c_float(0)
+    var count = 0
     while test_loader.next():
         # note that `inference` will only use the first seq_len - 1 tokens in buffer
-        test_tape = test_loader.tape.span()
+        var test_tape = test_loader.tape.span()
         model.inference(test_tape, probs)
         # and the last token in the tape buffer is the label
-        target = test_tape[int(seq_len) - 1]
+        var target = test_tape[int(seq_len) - 1]
         # negative log likelihood loss
         sum_loss += -math.log(probs[int(target)])
         count += 1
 
-    mean_loss = sum_loss / count
-    test_preplexity = math.exp(mean_loss)
-    print(
-        String.format(
-            "test_loss {}, test_preplexity {}", mean_loss, test_preplexity
-        )
-    )
+    var mean_loss = sum_loss / count
+    var test_preplexity = math.exp(mean_loss)
+    # print(
+    #     String.format(
+    #         "test_loss {}, test_preplexity {}", mean_loss, test_preplexity
+    #     )
+    # )
     return
